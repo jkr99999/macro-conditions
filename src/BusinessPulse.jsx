@@ -327,14 +327,21 @@ function ScoreCard({ comp, latestVals }) {
 
 function BigChart({ title, pairs, allData, height = 180 }) {
     const combined = useMemo(() => {
+        // Use a fixed 90-calendar-day window so weekly + daily series share the same date range
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 90);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+
         const map = {};
         pairs.forEach(({ id }) => {
             const m = METRICS_BY_ID[id];
             const cs = m?.chartScale || 1;
-            (allData[id] || []).slice(-60).forEach((d) => {
-                if (!map[d.date]) map[d.date] = { date: d.date };
-                map[d.date][id] = d.value * cs;
-            });
+            (allData[id] || [])
+                .filter((d) => d.date >= cutoffStr)
+                .forEach((d) => {
+                    if (!map[d.date]) map[d.date] = { date: d.date };
+                    map[d.date][id] = d.value * cs;
+                });
         });
         return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
     }, [pairs, allData]);
@@ -394,6 +401,7 @@ function BigChart({ title, pairs, allData, height = 180 }) {
                                 yAxisId={idx === 0 ? "left" : "right"}
                                 stroke={m?.color} strokeWidth={1.5}
                                 dot={false} name={m?.label}
+                                connectNulls={true}
                                 isAnimationActive={false}
                             />
                         );
