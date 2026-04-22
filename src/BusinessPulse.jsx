@@ -150,23 +150,20 @@ function makeMock(metric) {
 }
 
 // ─────────────────────────────────────────────
-// FETCH
+// FETCH — routes through /api/fred proxy (avoids CORS)
 // ─────────────────────────────────────────────
-async function fetchSeries(id, apiKey) {
-    const p = new URLSearchParams({
-        series_id: id, api_key: apiKey,
-        file_type: "json", sort_order: "desc", limit: "120",
-    });
-    const res = await fetch(`${FRED_BASE}?${p}`);
-    if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error_message || `HTTP ${res.status}`);
-    }
-    const json = await res.json();
-    return json.observations
-        .filter((o) => o.value !== ".")
-        .map((o) => ({ date: o.date, value: parseFloat(o.value) }))
-        .reverse();
+async function fetchSeries(id) {
+  const p = new URLSearchParams({ series_id: id });
+  const res = await fetch(`/api/fred?${p}`);
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error_message || `HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  return json.observations
+    .filter((o) => o.value !== ".")
+    .map((o) => ({ date: o.date, value: parseFloat(o.value) }))
+    .reverse();
 }
 
 // ─────────────────────────────────────────────
@@ -460,8 +457,6 @@ function RecessionIndicator({ latestVals }) {
 // MAIN
 // ─────────────────────────────────────────────
 export default function BusinessPulseDashboard() {
-    const envKey = import.meta.env.VITE_FRED_API_KEY || "";
-    const [apiInput, setApiInput] = useState(envKey);
     const [allData, setAllData] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -469,15 +464,9 @@ export default function BusinessPulseDashboard() {
     const [lastUpdated, setLastUpdated] = useState(null);
     const [tick, setTick] = useState(new Date());
 
-    // init: load live if env key present, else mock
+    // auto-load on mount via proxy
     useEffect(() => {
-        if (envKey) {
-            loadData(envKey);
-        } else {
-            const d = {};
-            METRICS.forEach((m) => { d[m.id] = makeMock(m); });
-            setAllData(d);
-        }
+        loadData();
     }, []);
 
     // clock tick
@@ -487,30 +476,30 @@ export default function BusinessPulseDashboard() {
     }, []);
 
     // auto-refresh live data every 5 min
-    const [savedKey, setSavedKey] = useState("");
+    const [hasLoaded, setHasLoaded] = useState(false);
     useEffect(() => {
-        if (!savedKey) return;
-        const t = setInterval(() => loadData(savedKey), 5 * 60 * 1000);
+        if (!hasLoaded) return;
+        const t = setInterval(() => loadData(), 5 * 60 * 1000);
         return () => clearInterval(t);
-    }, [savedKey]);
+    }, [hasLoaded]);
 
-    const loadData = useCallback(async (key) => {
-        if (!key.trim()) return;
+    const loadData = useCallback(async () => {
         setLoading(true);
         setError("");
         try {
             const entries = await Promise.all(
-                METRICS.map(async (m) => [m.id, await fetchSeries(m.id, key)])
+                METRICS.map(async (m) => [m.id, await fetchSeries(m.id)])
             );
             setAllData(Object.fromEntries(entries));
             setIsMock(false);
             setLastUpdated(new Date());
-            setSavedKey(key);
+            setHasLoaded(true);
         } catch (e) {
-            setError(e.message || "Failed — verify your FRED API key");
+            setError(e.message || "Failed to fetch data");
         } finally {
             setLoading(false);
         }
+
     }, []);
 
     const latestVals = useMemo(() => {
@@ -554,26 +543,15 @@ export default function BusinessPulseDashboard() {
                         </h1>
                         <div style={{ fontSize: 10, color: isMock ? "#ffd74099" : "#4a5578", marginTop: 1 }}>
                             {isMock
-                                ? "⚠  Demo data · Enter FRED API key for live data"
+                                ? "⚠  Demo data — data unavailable"
                                 : `Live · FRED · Refreshes every 5 min · Last: ${lastUpdated?.toLocaleTimeString()}`}
                         </div>
                     </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input
-                        value={apiInput}
-                        onChange={(e) => setApiInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && loadData(apiInput)}
-                        placeholder="FRED API key (free at fred.stlouisfed.org)"
-                        style={{
-                            background: "#141829", border: "1px solid #1e2440",
-                            borderRadius: 7, color: "#e8edf5", padding: "7px 12px",
-                            fontSize: 11, fontFamily: "Space Mono, monospace", width: 290,
-                        }}
-                    />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <button
-                        onClick={() => loadData(apiInput)}
+                        onClick={() => loadData()}
                         disabled={loading}
                         style={{
                             background: loading ? "#1e2440" : "#4fc3f7",
@@ -584,7 +562,7 @@ export default function BusinessPulseDashboard() {
                             transition: "background 0.2s",
                         }}
                     >
-                        {loading ? "Loading…" : "Load Live →"}
+                        {loading ? "Loading…" : "↻ Refresh"}
                     </button>
                     <div style={{
                         fontFamily: "Space Mono, monospace", fontSize: 13,
