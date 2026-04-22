@@ -350,20 +350,21 @@ function BigChart({ title, pairs, allData, height = 180 }) {
                 {title}
             </div>
             <div style={{ display: "flex", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-                {pairs.map(({ id }) => {
+                {pairs.map(({ id }, idx) => {
                     const m = METRICS_BY_ID[id];
                     return (
                         <div key={id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                             <div style={{ width: 16, height: 2, background: m?.color, borderRadius: 1 }} />
                             <span style={{ fontSize: 9, color: "#4a5578", fontFamily: "Space Mono, monospace" }}>
                                 {m?.label} {m?.dispUnit ? `(${m.dispUnit === "bps" ? "%" : m.dispUnit})` : ""}
+                                <span style={{ color: "#2e3555", marginLeft: 3 }}>{idx === 0 ? "L" : "R"}</span>
                             </span>
                         </div>
                     );
                 })}
             </div>
             <ResponsiveContainer width="100%" height={height}>
-                <LineChart data={combined} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+                <LineChart data={combined} margin={{ top: 4, right: 42, bottom: 0, left: -10 }}>
                     <CartesianGrid stroke="#1e2440" strokeDasharray="3 3" vertical={false} />
                     <XAxis
                         dataKey="date" tickFormatter={formatX}
@@ -372,16 +373,25 @@ function BigChart({ title, pairs, allData, height = 180 }) {
                         interval={Math.floor(combined.length / 5)}
                     />
                     <YAxis
-                        tick={{ fontSize: 9, fill: "#3a4565", fontFamily: "Space Mono, monospace" }}
+                        yAxisId="left"
+                        tick={{ fontSize: 9, fill: METRICS_BY_ID[pairs[0]?.id]?.color ?? "#3a4565", fontFamily: "Space Mono, monospace" }}
                         tickLine={false} axisLine={false} width={36}
                     />
+                    {pairs[1] && (
+                        <YAxis
+                            yAxisId="right" orientation="right"
+                            tick={{ fontSize: 9, fill: METRICS_BY_ID[pairs[1]?.id]?.color ?? "#3a4565", fontFamily: "Space Mono, monospace" }}
+                            tickLine={false} axisLine={false} width={36}
+                        />
+                    )}
                     <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#2a3050", strokeWidth: 1 }} />
-                    <ReferenceLine y={0} stroke="#2a3050" strokeWidth={1} />
-                    {pairs.map(({ id }) => {
+                    <ReferenceLine yAxisId="left" y={0} stroke="#2a3050" strokeWidth={1} />
+                    {pairs.map(({ id }, idx) => {
                         const m = METRICS_BY_ID[id];
                         return (
                             <Line
                                 key={id} type="monotone" dataKey={id}
+                                yAxisId={idx === 0 ? "left" : "right"}
                                 stroke={m?.color} strokeWidth={1.5}
                                 dot={false} name={m?.label}
                                 isAnimationActive={false}
